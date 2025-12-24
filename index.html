@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>D&D Interactive Map</title>
+  <style>
+    :root{
+      --bg:#0f1220;
+      --panel:#161a2b;
+      --panel2:#1d2238;
+      --text:#e9ecff;
+      --muted:#aab0d6;
+      --accent:#7c5cff;
+      --danger:#ff4d7d;
+      --ok:#38d9a9;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% 10%, #1b1f3a 0, var(--bg) 55%, #0a0c16 100%);
+      color:var(--text);
+      overflow:hidden;
+    }
+
+    /* Layout */
+    .app{
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      height:100%;
+      gap: 12px;
+      padding: 12px;
+    }
+    @media (max-width: 980px){
+      body{overflow:auto}
+      .app{
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(520px, 1fr);
+        height:auto;
+        overflow:auto;
+      }
+    }
+
+    .panel{
+      background: linear-gradient(180deg, var(--panel) 0, rgba(22,26,43,.88) 100%);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      min-height: 0;
+    }
+
+    /* Sidebar */
+    .sidebar{
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+    .sidebar header{
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, var(--panel2) 0, rgba(29,34,56,.65) 100%);
+    }
+    .title{
+      display:flex; align-items:center; gap:10px;
+      margin:0 0 8px;
+    }
+    .badge{
+      font-size:12px;
+      padding: 3px 8px;
+      border-radius:999px;
+      background: rgba(124,92,255,.18);
+      border: 1px solid rgba(124,92,255,.35);
+      color: #dcd6ff;
+    }
+    .controls{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items:center;
+    }
+    .search{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      outline:none;
+    }
+    .search::placeholder{color:rgba(233,236,255,.6)}
+    .toggle{
+      display:flex; align-items:center; gap:8px;
+      font-size:12px;
+      color: var(--muted);
+      user-select:none;
+      white-space:nowrap;
+    }
+    .toggle input{accent-color: var(--accent)}
+    .hint{
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height:1.4;
+    }
+
+    .list{
+      padding: 10px;
+      overflow:auto;
+      min-height:0;
+    }
+    .card{
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.16);
+      margin-bottom: 10px;
+      cursor:pointer;
+      transition: transform .08s ease, border-color .12s ease;
+    }
+    .card:hover{transform: translateY(-1px); border-color: rgba(124,92,255,.40)}
+    .card h3{
+      margin:0 0 6px;
+      font-size: 14px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124,92,255,.18);
+    }
+    .dot.dm{background: var(--danger); box-shadow: 0 0 0 3px rgba(255,77,125,.18)}
+    .meta{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+    }
+    .tag{
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+    }
+
+    /* Map stage */
+    .stage{
+      position:relative;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+    }
+    .stage header{
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      background: linear-gradient(180deg, var(--panel2) 0, rgba(29,34,56,.65) 100%);
+    }
+    .stage header .left{
+      display:flex; align-items:center; gap:10px;
+      min-width:0;
+    }
+    .small{
+      font-size:12px;
+      color: var(--muted);
+    }
+    .btns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+    button{
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 12px;
+      cursor:pointer;
+      transition: transform .08s ease, border-color .12s ease;
+      font-size:12px;
+    }
+    button:hover{transform: translateY(-1px); border-color: rgba(124,92,255,.40)}
+    button.primary{
+      background: rgba(124,92,255,.22);
+      border-color: rgba(124,92,255,.40);
+    }
+
+    .viewport{
+      position:relative;
+      flex:1;
+      overflow:hidden;
+      border-bottom-left-radius: var(--radius);
+      border-bottom-right-radius: var(--radius);
+      touch-action: none; /* we'll handle gestures */
+      background:
+        radial-gradient(1000px 600px at 50% 35%, rgba(124,92,255,.14), transparent 55%),
+        rgba(0,0,0,.10);
+    }
+
+    /* Transformable map layer */
+    .mapLayer{
+      position:absolute;
+      left:50%; top:50%;
+      transform: translate(-50%,-50%) scale(1);
+      transform-origin: center center;
+      will-change: transform;
+    }
+    .mapImg{
+      display:block;
+      max-width:none;
+      user-select:none;
+      -webkit-user-drag:none;
+      border-radius: 18px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.12);
+    }
+
+    /* Pins */
+    .pin{
+      position:absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      transform: translate(-50%,-100%);
+      background: var(--accent);
+      border: 2px solid rgba(255,255,255,.85);
+      box-shadow: 0 10px 18px rgba(0,0,0,.35), 0 0 0 8px rgba(124,92,255,.16);
+      cursor:pointer;
+    }
+    .pin::after{
+      content:"";
+      position:absolute;
+      left:50%; top:100%;
+      transform: translateX(-50%);
+      width:0;height:0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 10px solid rgba(255,255,255,.85);
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+    }
+    .pin.dm{
+      background: var(--danger);
+      box-shadow: 0 10px 18px rgba(0,0,0,.35), 0 0 0 8px rgba(255,77,125,.14);
+    }
+    .pin.hidden{display:none;}
+
+    /* Modal */
+    .modalBackdrop{
+      position:absolute;
+      inset:0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 14px;
+    }
+    .modalBackdrop.show{display:flex;}
+    .modal{
+      width:min(560px, 100%);
+      background: linear-gradient(180deg, rgba(29,34,56,.96) 0, rgba(22,26,43,.96) 100%);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+    .modal h2{
+      margin:0 0 8px;
+      font-size: 18px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .modal p{
+      margin:0 0 12px;
+      color: #dde1ff;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .modal .row{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+    .close{
+      border-color: rgba(255,255,255,.16);
+    }
+
+    /* Footer note */
+    .footerNote{
+      font-size: 11px;
+      color: rgba(170,176,214,.9);
+      margin-left:auto;
+      opacity:.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="panel sidebar">
+      <header>
+        <div class="title">
+          <h1 style="margin:0;font-size:16px;letter-spacing:.2px;">Interactive D&D Map</h1>
+          <span class="badge">single-file</span>
+        </div>
+        <div class="controls">
+          <input id="search" class="search" placeholder="Search locations (e.g., tavern, docks)..." />
+          <label class="toggle" title="Show DM-only secrets on the map & list">
+            <input id="dmToggle" type="checkbox" />
+            DM Mode
+          </label>
+        </div>
+        <div class="hint">
+          • Click pins or list items to open details<br/>
+          • Drag to pan, scroll/pinch to zoom<br/>
+          • DM Mode reveals red “secret” pins
+        </div>
+      </header>
+      <div id="list" class="list"></div>
+    </aside>
+
+    <!-- Map -->
+    <main class="panel stage">
+      <header>
+        <div class="left">
+          <div>
+            <div style="font-weight:600">Map View</div>
+            <div class="small">Replace <b>YOUR_MAP.png</b> + edit locations in the code.</div>
+          </div>
+        </div>
+        <div class="btns">
+          <button id="fitBtn" class="primary">Fit to screen</button>
+          <button id="resetBtn">Reset</button>
+          <button id="zoomInBtn">Zoom +</button>
+          <button id="zoomOutBtn">Zoom −</button>
+          <span class="footerNote">Tip: press Esc to close popup</span>
+        </div>
+      </header>
+
+      <div id="viewport" class="viewport">
+        <div id="mapLayer" class="mapLayer">
+          <!-- Put your map image next to index.html and rename here -->
+          <img id="mapImg" class="mapImg" src="YOUR_MAP.png" alt="Map" />
+          <!-- Pins get injected here -->
+        </div>
+
+        <!-- Modal -->
+        <div id="modalBackdrop" class="modalBackdrop" aria-hidden="true">
+          <div class="modal" role="dialog" aria-modal="true" aria-label="Location details">
+            <div class="row">
+              <h2 id="modalTitle"></h2>
+              <button id="closeModalBtn" class="close">Close</button>
+            </div>
+            <div id="modalMeta" class="meta" style="margin: 0 0 10px;"></div>
+            <p id="modalBody"></p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+<script>
+/**
+ * 1) Replace YOUR_MAP.png with your map image file name.
+ * 2) Edit LOCATIONS below. Coordinates are percentages relative to the image:
+ *    x/y from 0..100 (e.g., x: 25 means 25% from left).
+ */
+
+const LOCATIONS = [
+  {
+    id: "town-square",
+    name: "Town Square",
+    x: 52, y: 58,
+    tags: ["public", "hub"],
+    dmOnly: false,
+    description:
+      "A crooked fountain gurgles black water.\nMarket stalls huddle like nervous animals.\nA bell tower watches everything."
+  },
+  {
+    id: "laughing-lantern",
+    name: "The Laughing Lantern (Tavern)",
+    x: 44, y: 62,
+    tags: ["public", "npc", "rumors"],
+    dmOnly: false,
+    description:
+      "Warm light, cheap stew, and too many smiles.\nRumor: someone keeps winning games of chance… too perfectly."
+  },
+  {
+    id: "sewer-entrance",
+    name: "Hidden Sewer Grate",
+    x: 61, y: 71,
+    tags: ["secret", "dungeon", "entry"],
+    dmOnly: true,
+    description:
+      "DM: Under the rusted grate is a chalk sigil.\nIf touched, it whispers the last lie spoken in this town."
+  }
+];
+
+// ---------- State ----------
+let dmMode = false;
+let query = "";
+let current = null;
+
+// Pan/zoom
+let scale = 1;
+let translate = { x: 0, y: 0 };
+let isPanning = false;
+let last = { x: 0, y: 0 };
+let pointers = new Map(); // pointerId -> {x,y}
+let pinchStartDist = 0;
+let pinchStartScale = 1;
+let pinchStartTranslate = {x:0,y:0};
+let pinchCenter = {x:0,y:0};
+
+// ---------- Elements ----------
+const listEl = document.getElementById("list");
+const searchEl = document.getElementById("search");
+const dmToggleEl = document.getElementById("dmToggle");
+const viewportEl = document.getElementById("viewport");
+const mapLayerEl = document.getElementById("mapLayer");
+const mapImgEl = document.getElementById("mapImg");
+
+const modalBackdrop = document.getElementById("modalBackdrop");
+const modalTitle = document.getElementById("modalTitle");
+const modalMeta = document.getElementById("modalMeta");
+const modalBody = document.getElementById("modalBody");
+const closeModalBtn = document.getElementById("closeModalBtn");
+
+const fitBtn = document.getElementById("fitBtn");
+const resetBtn = document.getElementById("resetBtn");
+const zoomInBtn = document.getElementById("zoomInBtn");
+const zoomOutBtn = document.getElementById("zoomOutBtn");
+
+// ---------- Render ----------
+function filteredLocations(){
+  const q = query.trim().toLowerCase();
+  return LOCATIONS.filter(loc => {
+    if (loc.dmOnly && !dmMode) return false;
+    if (!q) return true;
+    const hay = (loc.name + " " + (loc.tags||[]).join(" ") + " " + loc.description).toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderList(){
+  const items = filteredLocations();
+  listEl.innerHTML = "";
+  if (!items.length){
+    const empty = document.createElement("div");
+    empty.className = "card";
+    empty.style.cursor = "default";
+    empty.innerHTML = `<h3 style="margin:0;font-size:14px;">No matches</h3>
+      <div class="meta"><span class="tag">Try a different search</span></div>`;
+    listEl.appendChild(empty);
+    return;
+  }
+
+  items.forEach(loc => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.onclick = () => focusLocation(loc.id, true);
+
+    const dotClass = loc.dmOnly ? "dot dm" : "dot";
+    const tags = (loc.tags||[]).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("");
+    card.innerHTML = `
+      <h3><span class="${dotClass}"></span> ${escapeHtml(loc.name)}</h3>
+      <div class="meta">${tags}${loc.dmOnly ? `<span class="tag" style="border-color:rgba(255,77,125,.45);background:rgba(255,77,125,.10)">DM-only</span>` : ""}</div>
+    `;
+    listEl.appendChild(card);
+  });
+}
+
+function renderPins(){
+  // Remove existing pins
+  [...mapLayerEl.querySelectorAll(".pin")].forEach(p => p.remove());
+
+  LOCATIONS.forEach(loc => {
+    const pin = document.createElement("div");
+    pin.className = "pin" + (loc.dmOnly ? " dm" : "");
+    pin.style.left = loc.x + "%";
+    pin.style.top = loc.y + "%";
+
+    if (loc.dmOnly && !dmMode) pin.classList.add("hidden");
+
+    pin.title = loc.name + (loc.dmOnly ? " (DM-only)" : "");
+    pin.onclick = (e) => { e.stopPropagation(); openModal(loc); };
+
+    mapLayerEl.appendChild(pin);
+  });
+}
+
+function openModal(loc){
+  current = loc;
+  modalTitle.textContent = loc.name;
+  modalBody.textContent = loc.description || "";
+
+  modalMeta.innerHTML = "";
+  (loc.tags||[]).forEach(t => {
+    const s = document.createElement("span");
+    s.className = "tag";
+    s.textContent = t;
+    modalMeta.appendChild(s);
+  });
+  if (loc.dmOnly){
+    const s = document.createElement("span");
+    s.className = "tag";
+    s.style.borderColor = "rgba(255,77,125,.45)";
+    s.style.background = "rgba(255,77,125,.10)";
+    s.textContent = "DM-only";
+    modalMeta.appendChild(s);
+  }
+
+  modalBackdrop.classList.add("show");
+  modalBackdrop.setAttribute("aria-hidden","false");
+}
+
+function closeModal(){
+  modalBackdrop.classList.remove("show");
+  modalBackdrop.setAttribute("aria-hidden","true");
+  current = null;
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+}
+
+// ---------- Pan/Zoom Transform ----------
+function applyTransform(){
+  const t = `translate(calc(-50% + ${translate.x}px), calc(-50% + ${translate.y}px)) scale(${scale})`;
+  mapLayerEl.style.transform = t;
+}
+
+function clampScale(s){
+  return Math.max(0.35, Math.min(4.5, s));
+}
+
+function zoomAt(delta, clientX, clientY){
+  const rect = viewportEl.getBoundingClientRect();
+  const vx = clientX - rect.left - rect.width/2;
+  const vy = clientY - rect.top  - rect.height/2;
+
+  const newScale = clampScale(scale * (delta > 0 ? 0.9 : 1.1));
+  const k = newScale / scale;
+
+  // Keep point under cursor stable
+  translate.x = vx - (vx - translate.x) * k;
+  translate.y = vy - (vy - translate.y) * k;
+
+  scale = newScale;
+  applyTransform();
+}
+
+function resetView(){
+  scale = 1;
+  translate = {x:0,y:0};
+  applyTransform();
+}
+
+function fitToScreen(){
+  const img = mapImgEl;
+  const vp = viewportEl.getBoundingClientRect();
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+
+  if (!iw || !ih) return;
+
+  const padding = 40;
+  const sx = (vp.width - padding) / iw;
+  const sy = (vp.height - padding) / ih;
+  scale = clampScale(Math.min(sx, sy));
+  translate = {x:0,y:0};
+  applyTransform();
+}
+
+function focusLocation(id, openDetails){
+  const loc = LOCATIONS.find(l => l.id === id);
+  if (!loc) return;
+
+  // Center location in viewport
+  const img = mapImgEl;
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+
+  // Convert percent coords to image local coords around center
+  const px = (loc.x/100) * iw - iw/2;
+  const py = (loc.y/100) * ih - ih/2;
+
+  // Translate should be negative of point to bring it to center
+  translate.x = -(px * scale);
+  translate.y = -(py * scale);
+  applyTransform();
+
+  if (openDetails) openModal(loc);
+}
+
+// ---------- Events ----------
+searchEl.addEventListener("input", (e)=>{
+  query = e.target.value;
+  renderList();
+});
+
+dmToggleEl.addEventListener("change",(e)=>{
+  dmMode = e.target.checked;
+  renderPins();
+  renderList();
+  // If modal open for DM-only and DM mode turned off, close it.
+  if (current && current.dmOnly && !dmMode) closeModal();
+});
+
+closeModalBtn.addEventListener("click", closeModal);
+modalBackdrop.addEventListener("click", (e)=>{
+  if (e.target === modalBackdrop) closeModal();
+});
+window.addEventListener("keydown",(e)=>{
+  if (e.key === "Escape") closeModal();
+});
+
+fitBtn.addEventListener("click", fitToScreen);
+resetBtn.addEventListener("click", resetView);
+zoomInBtn.addEventListener("click", ()=> zoomAt(-1, viewportEl.getBoundingClientRect().left + viewportEl.clientWidth/2, viewportEl.getBoundingClientRect().top + viewportEl.clientHeight/2));
+zoomOutBtn.addEventListener("click", ()=> zoomAt(+1, viewportEl.getBoundingClientRect().left + viewportEl.clientWidth/2, viewportEl.getBoundingClientRect().top + viewportEl.clientHeight/2));
+
+viewportEl.addEventListener("wheel",(e)=>{
+  e.preventDefault();
+  zoomAt(e.deltaY, e.clientX, e.clientY);
+},{passive:false});
+
+// Pointer-based pan & pinch
+viewportEl.addEventListener("pointerdown", (e)=>{
+  viewportEl.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if (pointers.size === 1){
+    isPanning = true;
+    last = {x:e.clientX, y:e.clientY};
+  } else if (pointers.size === 2){
+    // Start pinch
+    const pts = [...pointers.values()];
+    pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    pinchStartScale = scale;
+    pinchStartTranslate = {...translate};
+    pinchCenter = { x: (pts[0].x + pts[1].x)/2, y: (pts[0].y + pts[1].y)/2 };
+  }
+});
+
+viewportEl.addEventListener("pointermove", (e)=>{
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if (pointers.size === 1 && isPanning){
+    const dx = e.clientX - last.x;
+    const dy = e.clientY - last.y;
+    translate.x += dx;
+    translate.y += dy;
+    last = {x:e.clientX, y:e.clientY};
+    applyTransform();
+  } else if (pointers.size === 2){
+    const pts = [...pointers.values()];
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const rect = viewportEl.getBoundingClientRect();
+    const cx = pinchCenter.x - rect.left - rect.width/2;
+    const cy = pinchCenter.y - rect.top  - rect.height/2;
+
+    const newScale = clampScale(pinchStartScale * (dist / Math.max(1, pinchStartDist)));
+    const k = newScale / pinchStartScale;
+
+    translate.x = cx - (cx - pinchStartTranslate.x) * k;
+    translate.y = cy - (cy - pinchStartTranslate.y) * k;
+    scale = newScale;
+    applyTransform();
+  }
+});
+
+function endPointer(e){
+  if (pointers.has(e.pointerId)) pointers.delete(e.pointerId);
+  if (pointers.size === 0){
+    isPanning = false;
+  }
+  if (pointers.size === 1){
+    // continue panning with remaining pointer
+    const pt = [...pointers.values()][0];
+    last = {x: pt.x, y: pt.y};
+    isPanning = true;
+  }
+}
+viewportEl.addEventListener("pointerup", endPointer);
+viewportEl.addEventListener("pointercancel", endPointer);
+viewportEl.addEventListener("pointerleave", endPointer);
+
+// Clicking empty map closes modal (nice UX)
+viewportEl.addEventListener("click",(e)=>{
+  if (modalBackdrop.classList.contains("show")) closeModal();
+});
+
+// ---------- Init ----------
+function init(){
+  renderPins();
+  renderList();
+
+  // Fit once image loads
+  if (mapImgEl.complete) fitToScreen();
+  else mapImgEl.addEventListener("load", fitToScreen);
+}
+init();
+</script>
+</body>
+</html>
